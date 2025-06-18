@@ -1,27 +1,46 @@
 FROM node:22.16.0-bullseye
 
-# Install Python 3.11 and pip
-RUN apt-get update && apt-get install -y python3.11 python3-pip ffmpeg && rm -rf /var/lib/apt/lists/*
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    wget build-essential libssl-dev zlib1g-dev \
+    libbz2-dev libreadline-dev libsqlite3-dev curl \
+    libncursesw5-dev xz-utils tk-dev libxml2-dev \
+    libxmlsec1-dev libffi-dev liblzma-dev ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python 3.11 from source
+RUN curl -O https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tgz && \
+    tar -xzf Python-3.11.9.tgz && \
+    cd Python-3.11.9 && \
+    ./configure --enable-optimizations && \
+    make -j$(nproc) && \
+    make altinstall && \
+    cd .. && rm -rf Python-3.11.9 Python-3.11.9.tgz
+
+# Link python3 and pip to Python 3.11
+RUN ln -s /usr/local/bin/python3.11 /usr/bin/python3 && \
+    ln -s /usr/local/bin/pip3.11 /usr/bin/pip3 && \
+    ln -s /usr/local/bin/pip3.11 /usr/bin/pip
 
 # Set working directory
 WORKDIR /app
 
-# Copy package.json and install Node dependencies
+# Install Node dependencies
 COPY package.json package-lock.json ./
 RUN npm install
 
-# Copy requirements.txt and install Python dependencies
+# Install Python dependencies
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all files
+# Copy the rest of your app
 COPY . .
 
-# Build Next.js app
+# Build the Next.js app
 RUN npm run build
 
-# Expose port
+# Expose the port
 EXPOSE 3000
 
-# Start app
+# Start the app
 CMD ["npm", "start"]
