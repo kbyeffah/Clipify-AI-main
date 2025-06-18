@@ -8,7 +8,7 @@ const TEMP_DIR = path.join(process.cwd(), 'public', 'temp');
 
 const PYTHON_COMMAND = os.platform() === 'win32'
   ? path.join(process.cwd(), 'venv', 'Scripts', 'python.exe')
-  : 'python3';
+  : '/usr/local/bin/python3.11';
 
 function cleanOutput(output: string): string {
   const jsonMatch = output.match(/\{[\s\S]*\}/);
@@ -100,8 +100,8 @@ export async function POST(req: Request): Promise<NextResponse> {
           if (!analysisResult.success) {
             resolve(
               NextResponse.json(
-                { error: analysisResult.error || 'Analysis failed' },
-                { status: 500 }
+                { error: analysisResult.error || 'Video analysis failed' },
+                { status: 400 }
               )
             );
             return;

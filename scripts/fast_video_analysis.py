@@ -642,7 +642,6 @@
 # if __name__ == '__main__':
 #     asyncio.run(main())
 
-
 import asyncio
 import os
 import tempfile
@@ -652,13 +651,17 @@ import cv2
 import requests
 import json
 import sys
-from datetime import datetime
 import unicodedata
+import logging
+import time  # Added import
 
-# Set UTF-8 encoding for stdout/stderr to handle Unicode characters
+# Set UTF-8 encoding for stdout/stderr
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class FastVideoAnalyzer:
     def __init__(self):
@@ -667,18 +670,17 @@ class FastVideoAnalyzer:
             raise ValueError("GROQ_API_KEY not found in environment variables.")
         self.groq_api_url = "https://api.x.ai/v1/chat/completions"
         self.temp_dir = tempfile.mkdtemp()
-        print(f"Temp directory created: {self.temp_dir}")
+        logger.info(f"Temp directory created: {self.temp_dir}")
 
     def _sanitize_text(self, text):
-        """Replace non-ASCII characters with their closest ASCII equivalent or '?'."""
         if not isinstance(text, str):
             text = str(text)
         return unicodedata.normalize('NFKD', text).encode('ascii', 'replace').decode('ascii')
 
     async def download_video_optimized(self, video_url, video_id):
         ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
+            'quiet': False,
+            'verbose': True,  # Enable verbose output for debugging
             'format': 'best[height<=720][ext=mp4]/best[height<=480][ext=mp4]/mp4',
             'outtmpl': os.path.join(self.temp_dir, 'video.%(ext)s'),
             'merge_output_format': 'mp4',
@@ -687,28 +689,20 @@ class FastVideoAnalyzer:
             'continuedl': True,
             'socket_timeout': 90,
             'http_chunk_size': 10485760,
-            'verbose': False,
-            'progress_hooks': [self._download_hook],
         }
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([video_url])
             video_path = os.path.join(self.temp_dir, 'video.mp4')
             if os.path.exists(video_path) and self._verify_video(video_path):
-                print(f"Video downloaded: {video_path}")
+                logger.info(f"Video downloaded: {video_path}")
                 return video_path
             else:
-                print("Warning: Partial or no valid video file found after download.")
-                return video_path if os.path.exists(video_path) else None
+                logger.error("No valid video file found after download.")
+                return None
         except Exception as e:
-            print(f"Download error: {self._sanitize_text(e)}")
+            logger.error(f"Download error: {self._sanitize_text(e)}")
             return None
-
-    def _download_hook(self, d):
-        if d['status'] == 'downloading':
-            print(f"Download progress: {d.get('downloaded_bytes', 0)} bytes")
-        elif d['status'] == 'finished':
-            print(f"Download completed: {d.get('downloaded_bytes', 0)} bytes")
 
     def _verify_video(self, video_path):
         try:
@@ -723,51 +717,50 @@ class FastVideoAnalyzer:
 
     async def transcribe_video(self, video_path):
         if not video_path:
-            print("No video file to transcribe.")
+            logger.warning("No video file to transcribe.")
             return []
-        print(f"Transcribing file: {video_path}")
+        logger.info(f"Transcribing file: {video_path}")
         try:
             model = whisper.load_model("base")
-            print("Loading Whisper model (base)...")
+            logger.info("Loading Whisper model (base)...")
             result = model.transcribe(video_path, fp16=False)
-            # Sanitize transcript text
             for segment in result['segments']:
                 segment['text'] = self._sanitize_text(segment['text'])
-            print(f"Whisper transcription completed: {len(result['segments'])} segments")
+            logger.info(f"Whisper transcription completed: {len(result['segments'])} segments")
             return result['segments']
         except Exception as e:
-            print(f"Transcription error: {self._sanitize_text(e)}")
+            logger.error(f"Transcription error: {self._sanitize_text(e)}")
             return []
 
     async def extract_key_frames(self, video_path):
         if not video_path:
-            print("No video file for frame extraction.")
+            logger.warning("No video file for frame extraction.")
             return []
-        print("Extracting key frames...")
+        logger.info("Extracting key frames...")
         try:
             cap = cv2.VideoCapture(video_path)
             frames = []
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             fps = cap.get(cv2.CAP_PROP_FPS)
-            interval = int(fps * 10)  # Extract frame every 10 seconds
+            interval = int(fps * 10)
             for i in range(0, frame_count, interval):
                 cap.set(cv2.CAP_PROP_POS_FRAMES, i)
                 ret, frame = cap.read()
                 if ret:
-                    frames.append(frame.tolist())  # Convert to list for JSON
+                    frames.append({"frame_index": i, "timestamp": i / fps})
             cap.release()
-            print(f"Key frames extracted: {len(frames)}")
+            logger.info(f"Key frames extracted: {len(frames)}")
             return frames
         except Exception as e:
-            print(f"Frame extraction error: {self._sanitize_text(e)}")
+            logger.error(f"Frame extraction error: {self._sanitize_text(e)}")
             return []
 
     async def generate_chapters(self, transcript_segments):
         transcript = " ".join([seg['text'] for seg in transcript_segments])
         if not transcript:
-            print("No transcript available for chapter generation.")
+            logger.warning("No transcript available for chapter generation.")
             return []
-        print("Generating chapters with Grok...")
+        logger.info("Generating chapters with Grok...")
         headers = {
             "Authorization": f"Bearer {self.groq_api_key}",
             "Content-Type": "application/json"
@@ -785,18 +778,29 @@ class FastVideoAnalyzer:
             response.raise_for_status()
             chapters_text = response.json()["choices"][0]["message"]["content"]
             chapters = json.loads(self._sanitize_text(chapters_text))
-            print(f"Chapters generated: {len(chapters)}")
+            logger.info(f"Chapters generated: {len(chapters)}")
             return chapters
         except Exception as e:
-            print(f"Grok chapter generation error: {self._sanitize_text(e)}")
+            logger.error(f"Grok chapter generation error: {self._sanitize_text(e)}")
             return []
 
     async def analyze_video(self, video_url, video_id):
-        start_time = datetime.now()
-        print(f"Starting video analysis for Video ID: {self._sanitize_text(video_id)}")
-        print("Launching async tasks...")
+        logger.info(f"Starting video analysis for Video ID: {self._sanitize_text(video_id)}")
+        logger.info("Launching async tasks...")
 
         video_path = await self.download_video_optimized(video_url, video_id)
+        if not video_path:
+            logger.error("Video download failed.")
+            return {
+                "success": False,
+                "error": "Failed to download video: Content not available",
+                "video_path": None,
+                "transcript": [],
+                "frames": [],
+                "chapters": [],
+                "duration_seconds": 0
+            }
+
         transcript_task = self.transcribe_video(video_path)
         frames_task = self.extract_key_frames(video_path)
         transcript, frames = await asyncio.gather(transcript_task, frames_task)
@@ -808,9 +812,9 @@ class FastVideoAnalyzer:
             "transcript": transcript,
             "frames": frames,
             "chapters": chapters,
-            "duration_seconds": (datetime.now() - start_time).total_seconds()
+            "duration_seconds": 0  # Updated in main
         }
-        print(f"Analysis completed in {result['duration_seconds']:.1f}s")
+        logger.info(f"Analysis completed in {result['duration_seconds']:.1f}s")
         return result
 
     def cleanup(self):
@@ -818,19 +822,22 @@ class FastVideoAnalyzer:
             for file in os.listdir(self.temp_dir):
                 os.remove(os.path.join(self.temp_dir, file))
             os.rmdir(self.temp_dir)
-            print("Cleaned up temporary files.")
+            logger.info("Cleaned up temporary files.")
         except Exception as e:
-            print(f"Cleanup error: {self._sanitize_text(e)}")
+            logger.error(f"Cleanup error: {self._sanitize_text(e)}")
 
 async def main():
+    start_time = time.time()
     try:
-        video_url = sys.argv[1] if len(sys.argv) > 1 else "https://www.youtube.com/watch?v=UIvgOuj-AA0"
-        video_id = sys.argv[2] if len(sys.argv) > 2 else "UIvgOuj-AA0"
+        video_url = sys.argv[1]
+        video_id = sys.argv[2]
         analyzer = FastVideoAnalyzer()
         result = await analyzer.analyze_video(video_url, video_id)
+        result["duration_seconds"] = time.time() - start_time
         print(json.dumps(result, ensure_ascii=False))
     except Exception as e:
-        print(json.dumps({"success": False, "error": str(e)})) 
+        logger.error(f"Main error: {str(e)}")
+        print(json.dumps({"success": False, "error": str(e), "video_path": None, "transcript": [], "frames": [], "chapters": [], "duration_seconds": time.time() - start_time}))
     finally:
         if 'analyzer' in locals():
             analyzer.cleanup()

@@ -1,107 +1,75 @@
-import React, { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+'use client';
 
-// Minimal YouTube IFrame API types
-interface YTPlayer {
-  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
-  getCurrentTime: () => number;
-  destroy: () => void;
-}
-
-// interface YTPlayerOptions {
-//   height: string;
-//   width: string;
-//   videoId: string;
-//   events: {
-//     onReady: () => void;
-//     onStateChange: (event: { data: number; target: YTPlayer }) => void;
-//   };
-// }
-
-// interface YTPlayerState {
-//   UNSTARTED: -1;
-//   ENDED: 0;
-//   PLAYING: 1;
-//   PAUSED: 2;
-//   BUFFERING: 3;
-//   CUED: 5;
-// }
-
-interface YouTubePlayerProps {
-  videoId: string;
-  onTimeUpdate?: (time: number) => void;
-}
+import React, { forwardRef, useImperativeHandle, useRef, useEffect } from 'react';
 
 export interface YouTubePlayerHandle {
   seekTo: (seconds: number) => void;
 }
 
+interface YouTubePlayerProps {
+  videoId: string;
+  onTimeUpdate: (time: number) => void;
+}
+
 const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>(({ videoId, onTimeUpdate }, ref) => {
-  const playerRef = useRef<YTPlayer | null>(null);
-  const iframeRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  useImperativeHandle(ref, () => ({
-    seekTo: (seconds: number) => {
-      if (playerRef.current) {
-        playerRef.current.seekTo(seconds, true);
-      }
-    },
-  }));
-
   useEffect(() => {
-    // Load YouTube IFrame API if not already loaded
-    if (!window.YT) {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      document.body.appendChild(tag);
-    }
-
-    window.onYouTubeIframeAPIReady = () => {
-      createPlayer();
-    };
-
-    // If already loaded
-    if (window.YT && window.YT.Player) {
-      createPlayer();
-    }
-
-    function createPlayer() {
-      if (!iframeRef.current || !window.YT) return;
-      playerRef.current = new window.YT.Player(iframeRef.current, {
-        height: '360',
-        width: '640',
-        videoId,
-        events: {
-          onReady: () => {},
-          onStateChange: () => {},
-        },
-      }) as YTPlayer;
-    }
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (playerRef.current && playerRef.current.destroy) {
-        playerRef.current.destroy();
-      }
-    };
-  }, [videoId]);
-
-  // Poll current time for autoscroll
-  useEffect(() => {
-    if (!onTimeUpdate) return;
+    // Poll iframe for current time (since no Iframe API)
     intervalRef.current = setInterval(() => {
-      if (playerRef.current && playerRef.current.getCurrentTime) {
-        const time = playerRef.current.getCurrentTime();
-        onTimeUpdate(time);
+      if (iframeRef.current) {
+        // Send message to iframe to get current time
+        iframeRef.current.contentWindow?.postMessage(
+          JSON.stringify({ event: 'command', func: 'getCurrentTime' }),
+          'https://www.youtube.com'
+        );
       }
-    }, 500);
+    }, 1000);
+
+    // Listen for messages from iframe
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== 'https://www.youtube.com') return;
+      try {
+        const data = JSON.parse(event.data);
+        if (data.event === 'infoDelivery' && data.info?.currentTime) {
+          onTimeUpdate(data.info.currentTime);
+        }
+      } catch {}
+    };
+
+    window.addEventListener('message', handleMessage);
     return () => {
+      window.removeEventListener('message', handleMessage);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [onTimeUpdate]);
 
-  return <div ref={iframeRef} className="w-full aspect-video rounded-lg overflow-hidden" />;
+  useImperativeHandle(ref, () => ({
+    seekTo: (seconds: number) => {
+      if (iframeRef.current) {
+        iframeRef.current.contentWindow?.postMessage(
+          JSON.stringify({ event: 'command', func: 'seekTo', args: [seconds, true] }),
+          'https://www.youtube.com'
+        );
+      }
+    },
+  }));
+
+  return (
+    <iframe
+      ref={iframeRef}
+      width="100%"
+      height="100%"
+      src={`https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`}
+      title="YouTube video player"
+      frameBorder="0"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowFullScreen
+    ></iframe>
+  );
 });
 
 YouTubePlayer.displayName = 'YouTubePlayer';
-export default YouTubePlayer; 
+
+export default YouTubePlayer;

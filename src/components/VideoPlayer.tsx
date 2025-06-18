@@ -1,54 +1,75 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef, useEffect } from 'react';
 
-interface VideoPlayerProps {
-  videoId: string;
-  onTimeUpdate?: (time: number) => void;
+export interface YouTubePlayerHandle {
+  seekTo: (seconds: number) => void;
 }
 
-export function VideoPlayer({ videoId, onTimeUpdate }: VideoPlayerProps) {
-  const playerRef = useRef<HTMLIFrameElement>(null);
+interface YouTubePlayerProps {
+  videoId: string;
+  onTimeUpdate: (time: number) => void;
+}
+
+const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>(({ videoId, onTimeUpdate }, ref) => {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    // Load YouTube IFrame API
-    const tag = document.createElement('script');
-    tag.src = 'https://www.youtube.com/iframe_api';
-    const firstScriptTag = document.getElementsByTagName('script')[0];
-    firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+    // Poll iframe for current time
+    intervalRef.current = setInterval(() => {
+      if (iframeRef.current) {
+        iframeRef.current.contentWindow?.postMessage(
+          JSON.stringify({ event: 'command', func: 'getCurrentTime' }),
+          'https://www.youtube.com'
+        );
+      }
+    }, 1000);
 
-    // Initialize player when API is ready
-    window.onYouTubeIframeAPIReady = () => {
-      new window.YT.Player(playerRef.current!, {
-        videoId,
-        playerVars: {
-          autoplay: 0,
-          controls: 1,
-        },
-        events: {
-          onStateChange: (event: { data: number; target: { getCurrentTime: () => number } }) => {
-            if (event.data === window.YT.PlayerState.PLAYING) {
-              const interval = setInterval(() => {
-                const currentTime = event.target.getCurrentTime();
-                onTimeUpdate?.(currentTime);
-              }, 1000);
-
-              return () => clearInterval(interval);
-            }
-          },
-        },
-      });
+    // Listen for messages from iframe
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== 'https://www.youtube.com') return;
+      try {
+        const data = JSON.parse(event.data);
+        if (data.event === 'infoDelivery' && data.info?.currentTime) {
+          onTimeUpdate(data.info.currentTime);
+        }
+      } catch {}
     };
-  }, [videoId, onTimeUpdate]);
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [onTimeUpdate]);
+
+  useImperativeHandle(ref, () => ({
+    seekTo: (seconds: number) => {
+      if (iframeRef.current) {
+        iframeRef.current.contentWindow?.postMessage(
+          JSON.stringify({ event: 'command', func: 'seekTo', args: [seconds, true] }),
+          'https://www.youtube.com'
+        );
+      }
+    },
+  }));
 
   return (
     <div className="relative w-full aspect-video">
       <iframe
-        ref={playerRef}
+        ref={iframeRef}
         className="absolute top-0 left-0 w-full h-full"
+        src={`https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`}
+        title="YouTube video player"
+        frameBorder="0"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen
-      />
+      ></iframe>
     </div>
   );
-}
+});
+
+YouTubePlayer.displayName = 'YouTubePlayer';
+
+export default YouTubePlayer;

@@ -5,19 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 
-declare global {
-  interface Window {
-    onYouTubeIframeAPIReady: () => void;
-    YT: {
-      Player: new (element: HTMLElement, config: unknown) => unknown;
-      PlayerState: { PLAYING: number };
-    };
-  }
-}
-
 export function VideoUploader({ onVideoSubmit }: { onVideoSubmit: (url: string) => void }) {
   const [url, setUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [videoId, setVideoId] = useState<string | null>(null);
 
   // Function to extract YouTube video ID and validate URL
   const extractVideoId = (url: string): string | null => {
@@ -35,15 +26,18 @@ export function VideoUploader({ onVideoSubmit }: { onVideoSubmit: (url: string) 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setVideoId(null);
 
-    const videoId = extractVideoId(url);
-    if (!videoId) {
+    const id = extractVideoId(url);
+    if (!id) {
       setError('Invalid YouTube URL. Please use a valid format (e.g., https://www.youtube.com/watch?v=...).');
       return;
     }
 
+    setVideoId(id);
+
     try {
-      await onVideoSubmit(url); // Pass the full URL to the parent
+      await onVideoSubmit(url);
     } catch (err) {
       setError('Failed to submit video. Please try again.');
       console.error('Submission error:', err);
@@ -75,6 +69,19 @@ export function VideoUploader({ onVideoSubmit }: { onVideoSubmit: (url: string) 
           </p>
         )}
       </form>
+      {videoId && (
+        <div className="mt-4">
+          <iframe
+            width="100%"
+            height="315"
+            src={`https://www.youtube.com/embed/${videoId}`}
+            title="YouTube video player"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          ></iframe>
+        </div>
+      )}
     </Card>
   );
 }
