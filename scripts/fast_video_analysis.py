@@ -830,9 +830,10 @@ async def main():
         result = await analyzer.analyze_video(video_url, video_id)
         print(json.dumps(result, ensure_ascii=False))
     except Exception as e:
-        print(json.dumps({"success": False, "error": self._sanitize_text(str(e))}))
+        print(json.dumps({"success": False, "error": str(e)})) 
     finally:
-        analyzer.cleanup()
+        if 'analyzer' in locals():
+            analyzer.cleanup()
 
 if __name__ == "__main__":
     asyncio.run(main())

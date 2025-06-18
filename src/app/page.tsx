@@ -20,6 +20,11 @@ interface Chapter {
   summary: string;
 }
 
+interface ChatMessage {
+  role: 'user' | 'agent';
+  content: string;
+}
+
 export default function Home() {
   const [videoId, setVideoId] = useState<string>('');
   const [currentTime, setCurrentTime] = useState(0);
@@ -28,7 +33,7 @@ export default function Home() {
   const [ragResponse, setRagResponse] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'agent'; content: string }[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
 
@@ -39,7 +44,6 @@ export default function Home() {
     setChatInput('');
   }, [videoId]);
 
-  // Function to extract YouTube video ID and validate URL
   const extractVideoId = (url: string): string | null => {
     const patterns = [
       /(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/)([^&\n?#]+)/,
@@ -57,12 +61,10 @@ export default function Home() {
       setIsLoading(true);
       setError(null);
 
-      // Extract and validate video ID
       const videoId = extractVideoId(url);
       if (!videoId) throw new Error('Invalid YouTube URL. Please use a valid format (e.g., https://www.youtube.com/watch?v=... or https://youtu.be/...).');
       setVideoId(videoId);
 
-      // Call API to analyze video
       const response = await fetch('/api/analyze-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -79,14 +81,12 @@ export default function Home() {
         throw new Error(data.error || 'Analysis failed');
       }
 
-      // Update state with analysis results
       setTranscript(data.transcript || []);
       setChapters(data.chapters || []);
       setRagResponse(data.rag_response || '');
     } catch (error) {
       console.error('Error analyzing video:', error);
       setError(error instanceof Error ? error.message : 'An unexpected error occurred');
-      // Clear previous results on error
       setVideoId('');
       setTranscript([]);
       setChapters([]);
@@ -106,7 +106,7 @@ export default function Home() {
 
   const handleSendChat = async () => {
     if (!chatInput.trim()) return;
-    const userMessage = { role: 'user', content: chatInput };
+    const userMessage: ChatMessage = { role: 'user', content: chatInput }; // Explicit type
     setChatMessages((prev) => [...prev, userMessage]);
     setChatInput('');
     setChatLoading(true);
@@ -152,7 +152,6 @@ export default function Home() {
 
       {videoId && !isLoading && !error && (
         <div key={videoId} className="flex flex-col items-center gap-8">
-          {/* YouTube Video Embed */}
           <div className="w-full aspect-video max-w-2xl mx-auto mb-4 rounded-lg overflow-hidden shadow">
             <YouTubePlayer
               ref={playerRef}
@@ -160,7 +159,6 @@ export default function Home() {
               onTimeUpdate={setCurrentTime}
             />
           </div>
-          {/* Tabs Card */}
           <div className="w-full max-w-2xl bg-white rounded-lg shadow p-4">
             <Tabs defaultValue="transcript" className="w-full">
               <TabsList className="mb-4">
@@ -197,7 +195,6 @@ export default function Home() {
                 <div className="p-4 border rounded-lg bg-gray-50">
                   <h3 className="font-bold mb-2">Video Analysis</h3>
                   <p className="whitespace-pre-wrap mb-4">{ragResponse}</p>
-                  {/* Chat UI */}
                   <div className="border rounded-lg bg-white p-4 max-h-96 overflow-y-auto mb-4" style={{ minHeight: 200 }}>
                     {chatMessages.length === 0 && <div className="text-gray-400">Ask anything about this video...</div>}
                     {chatMessages.map((msg, idx) => (
