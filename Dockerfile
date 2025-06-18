@@ -17,10 +17,10 @@ RUN curl -O https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tgz && \
     make altinstall && \
     cd .. && rm -rf Python-3.11.9 Python-3.11.9.tgz
 
-# Link python3 and pip to Python 3.11
-RUN ln -s /usr/local/bin/python3.11 /usr/bin/python3 && \
-    ln -s /usr/local/bin/pip3.11 /usr/bin/pip3 && \
-    ln -s /usr/local/bin/pip3.11 /usr/bin/pip
+# Link python3 and pip to Python 3.11, forcing if already exists
+RUN ln -sf /usr/local/bin/python3.11 /usr/bin/python3 && \
+    ln -sf /usr/local/bin/pip3.11 /usr/bin/pip3 && \
+    ln -sf /usr/local/bin/pip3.11 /usr/bin/pip
 
 # Set working directory
 WORKDIR /app
