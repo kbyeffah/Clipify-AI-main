@@ -18,7 +18,7 @@ RUN curl -O https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tgz && \
     make altinstall && \
     cd .. && rm -rf Python-3.11.9 Python-3.11.9.tgz
 
-# Link python3 and pip to Python 3.11, forcing if already exists
+# Link python3 and pip to Python 3.11
 RUN ln -sf /usr/local/bin/python3.11 /usr/bin/python3 && \
     ln -sf /usr/local/bin/pip3.11 /usr/bin/pip3 && \
     ln -sf /usr/local/bin/pip3.11 /usr/bin/pip
@@ -32,9 +32,9 @@ RUN npm install
 
 # Install Python dependencies
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
 
-# Copy the rest of your app
+# Copy the rest of the app
 COPY . .
 
 # Build the Next.js app
