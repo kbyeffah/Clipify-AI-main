@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     libbz2-dev libreadline-dev libsqlite3-dev curl \
     libncursesw5-dev xz-utils tk-dev libxml2-dev \
     libxmlsec1-dev libffi-dev liblzma-dev ffmpeg \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python 3.11 from source
