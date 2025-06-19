@@ -676,7 +676,7 @@ class FastVideoAnalyzer:
         if not isinstance(text, str):
             text = str(text)
         return unicodedata.normalize('NFKD', text).encode('ascii', 'replace').decode('ascii')
-
+    proxy = os.getenv("SCRAPERAPI_PROXY")
     async def download_video_optimized(self, video_url, video_id):
         ydl_opts = {
             'quiet': False,
@@ -689,6 +689,7 @@ class FastVideoAnalyzer:
             'continuedl': True,
             'socket_timeout': 90,
             'http_chunk_size': 10485760,
+            'proxy': proxy,
         }
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
